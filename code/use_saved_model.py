@@ -4,9 +4,13 @@ Questo script mostra come caricare il modello e fare predizioni su nuovi dati.
 """
 
 import numpy as np
+import pandas as pd
 import joblib
 from scipy.stats import entropy, skew, kurtosis, iqr
 from scipy.signal import welch
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
 
 
 def extract_features(window):
@@ -38,6 +42,23 @@ def extract_features(window):
 
     return np.array(feats)
 
+
+class Committee:
+    def __init__(self):
+        self.models = [
+            GaussianNB(),
+            DecisionTreeClassifier(max_depth=10),
+            KNeighborsClassifier(n_neighbors=5)
+        ]
+
+    def fit(self, X, y):
+        for m in self.models:
+            m.fit(X, y)
+
+    def predict_proba(self, X):
+        probs = np.array([m.predict_proba(X) for m in self.models])
+        return np.mean(probs, axis=0)  # average committee output
+    
 
 def load_model():
     """
@@ -109,7 +130,10 @@ def main():
     # Assumendo 6 canali (3 accelerometro + 3 giroscopio) e 180 campioni
     window_size = 180
     n_channels = 6
-    example_window = np.random.randn(window_size, n_channels)
+    # example_window = np.random.randn(window_size, n_channels)
+
+    # Load data about a real punch
+    example_window = pd.read_csv('../LeadHook/Lead_hook_split/punch_16.csv').values  # The first row is the header
     
     print(f"Predizione su finestra di shape: {example_window.shape}")
     predicted_label, probabilities = predict_punch(example_window, model, scaler)
