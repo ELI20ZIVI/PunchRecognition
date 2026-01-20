@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🥊 Boxing Punch Analyzer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🥊</span>
+                <h1>Boxing Punch Analyzer</h1>
+            </div>
+            <div class="session-info" id="sessionInfo"></div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section id="uploadSection" class="section upload-section">
+                <div class="upload-container">
+                    <div class="upload-icon">📊</div>
+                    <h2>Carica Sessione di Allenamento</h2>
+                    <p>Carica il file CSV con i dati dei sensori per analizzare la tua sessione</p>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="csvInput" accept=".csv" hidden>
+                        <div class="upload-content">
+                            <span class="upload-icon-large">📁</span>
+                            <p>Trascina qui il file CSV</p>
+                            <p class="or-text">oppure</p>
+                            <button class="btn btn-primary" id="selectFileBtn">Seleziona File</button>
+                        </div>
+                    </div>
+                    
+                    <div class="file-info" id="fileInfo" style="display: none;">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name" id="fileName"></span>
+                        <button class="btn btn-secondary" id="analyzeBtn">Analizza Sessione</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Processing Section -->
+            <section id="processingSection" class="section processing-section" style="display: none;">
+                <div class="processing-container">
+                    <div class="boxing-animation">
+                        <div class="glove left-glove">🥊</div>
+                        <div class="glove right-glove">🥊</div>
+                    </div>
+                    <h2>Analisi in corso...</h2>
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <span class="progress-text" id="progressText">0%</span>
+                    </div>
+                    <p class="processing-info" id="processingInfo">Elaborazione dati sensori...</p>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section id="resultsSection" class="section results-section" style="display: none;">
+                <!-- Summary Stats -->
+                <div class="summary-stats">
+                    <div class="stat-card total-punches">
+                        <span class="stat-icon">👊</span>
+                        <div class="stat-content">
+                            <span class="stat-value" id="totalPunches">0</span>
+                            <span class="stat-label">Colpi Totali</span>
+                        </div>
+                    </div>
+                    <div class="stat-card session-duration">
+                        <span class="stat-icon">⏱️</span>
+                        <div class="stat-content">
+                            <span class="stat-value" id="sessionDuration">0:00</span>
+                            <span class="stat-label">Durata</span>
+                        </div>
+                    </div>
+                    <div class="stat-card punches-per-min">
+                        <span class="stat-icon">⚡</span>
+                        <div class="stat-content">
+                            <span class="stat-value" id="punchesPerMin">0</span>
+                            <span class="stat-label">Colpi/Min</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gauge Charts -->
+                <div class="gauges-container">
+                    <h2 class="section-title">Distribuzione Colpi</h2>
+                    <div class="gauges-grid">
+                        <!-- Left Hand Punches -->
+                        <div class="hand-section">
+                            <h3 class="hand-title">🤛 Mano Sinistra</h3>
+                            <div class="gauges-row">
+                                <div class="gauge-card" data-punch-type="jab_left">
+                                    <canvas id="gaugeJabLeft" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Diretto</span>
+                                        <span class="gauge-count" id="countJabLeft">0</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-card" data-punch-type="hook_left">
+                                    <canvas id="gaugeHookLeft" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Gancio</span>
+                                        <span class="gauge-count" id="countHookLeft">0</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-card" data-punch-type="uppercut_left">
+                                    <canvas id="gaugeUppercutLeft" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Montante</span>
+                                        <span class="gauge-count" id="countUppercutLeft">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Hand Punches -->
+                        <div class="hand-section">
+                            <h3 class="hand-title">🤜 Mano Destra</h3>
+                            <div class="gauges-row">
+                                <div class="gauge-card" data-punch-type="jab_right">
+                                    <canvas id="gaugeJabRight" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Diretto</span>
+                                        <span class="gauge-count" id="countJabRight">0</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-card" data-punch-type="hook_right">
+                                    <canvas id="gaugeHookRight" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Gancio</span>
+                                        <span class="gauge-count" id="countHookRight">0</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-card" data-punch-type="uppercut_right">
+                                    <canvas id="gaugeUppercutRight" class="gauge-canvas"></canvas>
+                                    <div class="gauge-info">
+                                        <span class="gauge-label">Montante</span>
+                                        <span class="gauge-count" id="countUppercutRight">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeline -->
+                <div class="timeline-container">
+                    <h2 class="section-title">Timeline Colpi</h2>
+                    <div class="timeline-chart" id="timelineChart"></div>
+                </div>
+
+                <!-- New Session Button -->
+                <div class="new-session-container">
+                    <button class="btn btn-primary btn-large" id="newSessionBtn">
+                        🔄 Nuova Analisi
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Punch Details Modal -->
+        <div class="modal" id="punchModal">
+            <div class="modal-overlay" id="modalOverlay"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modalTitle">Dettagli Colpi</h2>
+                    <button class="modal-close" id="modalClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="punch-list-container">
+                        <table class="punch-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Tempo</th>
+                                    <th>Confidenza</th>
+                                    <th>Velocità Picco</th>
+                                    <th>Durata</th>
+                                </tr>
+                            </thead>
+                            <tbody id="punchTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Punch Detail View -->
+        <div class="modal" id="punchDetailModal">
+            <div class="modal-overlay" id="detailModalOverlay"></div>
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="detailModalTitle">Analisi Colpo</h2>
+                    <button class="modal-close" id="detailModalClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="punch-detail-grid">
+                        <div class="detail-card">
+                            <span class="detail-icon">⏱️</span>
+                            <span class="detail-label">Timestamp</span>
+                            <span class="detail-value" id="detailTimestamp">-</span>
+                        </div>
+                        <div class="detail-card">
+                            <span class="detail-icon">🎯</span>
+                            <span class="detail-label">Confidenza</span>
+                            <span class="detail-value" id="detailConfidence">-</span>
+                        </div>
+                        <div class="detail-card">
+                            <span class="detail-icon">💨</span>
+                            <span class="detail-label">Velocità Picco</span>
+                            <span class="detail-value" id="detailVelocity">-</span>
+                        </div>
+                        <div class="detail-card">
+                            <span class="detail-icon">⏳</span>
+                            <span class="detail-label">Durata</span>
+                            <span class="detail-value" id="detailDuration">-</span>
+                        </div>
+                        <div class="detail-card">
+                            <span class="detail-icon">📈</span>
+                            <span class="detail-label">Accelerazione Picco</span>
+                            <span class="detail-value" id="detailAcceleration">-</span>
+                        </div>
+                        <div class="detail-card">
+                            <span class="detail-icon">🔄</span>
+                            <span class="detail-label">Velocità Rotazione</span>
+                            <span class="detail-value" id="detailRotation">-</span>
+                        </div>
+                    </div>
+                    <div class="punch-chart-container">
+                        <h3>Dati Sensori Durante il Colpo</h3>
+                        <canvas id="punchDataChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
