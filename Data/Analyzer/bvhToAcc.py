@@ -1,3 +1,5 @@
+import os
+from multiprocessing import Pool, cpu_count
 import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
@@ -69,7 +71,9 @@ def parse_bvh(file_path):
         if line.startswith('Frames:'):
             frames = int(line.split()[1])
         elif line.startswith('Frame Time:'):
-            frame_time = float(line.split()[2])
+            # Some BVH exports use comma as decimal separator; normalize it.
+            frame_str = line.split()[2].replace(',', '.')
+            frame_time = float(frame_str)
         else:
             line_data = [float(x) for x in line.split()]
             motion_data.append(line_data)
@@ -160,7 +164,7 @@ def main(input_bvh, output_csv):
     joint_names = [j.name for j in joints]
     
     # --- MODIFICATION START ---
-    target_joints = ['RightHand', 'LeftHand']
+    target_joints = ['RightHand', 'LeftHand', 'r_hand', 'l_hand']
     col_names = []
     data_list = []
     
@@ -189,17 +193,51 @@ def main(input_bvh, output_csv):
     df = pd.DataFrame(flat_data, columns=col_names)
     df.insert(0, 'Time', np.arange(frames) * frame_time)
     df.insert(0, 'Frame', np.arange(frames))
+
+    # Rename columns to match desired output
+    rename_map = {
+        'r_hand_Accel_X': 'RightHand_Accel_X',
+        'r_hand_Accel_Y': 'RightHand_Accel_Y',
+        'r_hand_Accel_Z': 'RightHand_Accel_Z',
+        'l_hand_Accel_X': 'LeftHand_Accel_X',
+        'l_hand_Accel_Y': 'LeftHand_Accel_Y',
+        'l_hand_Accel_Z': 'LeftHand_Accel_Z'
+    }
+    df.rename(columns=rename_map, inplace=True)
+
     # --- MODIFICATION END ---
     
     df.to_csv(output_csv, index=False)
     print(f"Success! Filtered acceleration data saved to: {output_csv}")
 
+def _process_file(args):
+    # Worker wrapper for multiprocessing
+    input_folder, input_file = args
+    input_bvh = os.path.join(input_folder, input_file)
+    output_csv = os.path.join("../ProcessedData", f"{os.path.splitext(input_file)[0]}_accel.csv")
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    main(input_bvh, output_csv)
+
+
 if __name__ == "__main__":
-    # Standard Usage
-    if len(sys.argv) == 3:
-        main(sys.argv[1], sys.argv[2])
+    folders = ["../Session1/Optitrack", "../Session1/Mocopi"]   # ../Session2/Optitrack - 60Hz
+
+    tasks = []
+    for input_folder in folders:
+        for input_file in os.listdir(input_folder):
+            if input_file.endswith(".bvh"):
+                tasks.append((input_folder, input_file))
+
+    if not tasks:
+        print("No BVH files found to process.")
+        sys.exit(0)
+
+    workers = min(cpu_count(), len(tasks))
+    if workers > 1:
+        print(f"Processing {len(tasks)} files with {workers} workers...")
+        with Pool(processes=workers) as pool:
+            pool.map(_process_file, tasks)
     else:
-        # Default fallback
-        input_file = "Data/Session2/Optitrack - 60Hz/Davide 1 - Take 2026-01-14 04.29.52 PM_004_Skeleton 001.bvh"
-        output_file = "Data/Session2/Optitrack - 60Hz/Davide 1 - output_hands_accel.csv"
-        main(input_file, output_file)
+        print("Processing files sequentially (single worker)...")
+        for task in tasks:
+            _process_file(task)

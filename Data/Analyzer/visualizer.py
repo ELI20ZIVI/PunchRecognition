@@ -22,13 +22,13 @@ def process_file_optimized(filename):
 
     # Pulizia nomi colonne
     df.columns = [c.strip() for c in df.columns]
-    required_cols = ['Time', 'RightHand_Accel_X', 'RightHand_Accel_Y', 'RightHand_Accel_Z', 
+    required_cols = ['Frame', 'RightHand_Accel_X', 'RightHand_Accel_Y', 'RightHand_Accel_Z', 
                      'LeftHand_Accel_X', 'LeftHand_Accel_Y', 'LeftHand_Accel_Z']
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f'Colonne richieste non trovate. Colonne disponibili: {df.columns.tolist()}')
 
     # Ordinamento
-    df = df.sort_values(by='Time').reset_index(drop=True)
+    df = df.sort_values(by='Frame').reset_index(drop=True)
 
     # 1. APPLICAZIONE DOWNSAMPLING
     # Prendiamo una riga ogni N
@@ -37,7 +37,7 @@ def process_file_optimized(filename):
     print(f"  -> Dati ridotti da {len(df)} a {len(df_plot)} punti (Fattore: {DOWNSAMPLE_FACTOR})")
 
     # Calcolo timestep medio sui dati ridotti per lo zoom JS
-    mean_timestep = df_plot['Time'].diff().mean()
+    mean_timestep = df_plot['Frame'].diff().mean()
     if pd.isna(mean_timestep) or mean_timestep == 0: mean_timestep = 0.016 * DOWNSAMPLE_FACTOR
 
     df_plot['row_number'] = df_plot.index # Manteniamo l'indice originale per riferimento
@@ -65,7 +65,7 @@ def process_file_optimized(filename):
             if col in df_plot.columns:
                 fig.add_trace(
                     go.Scattergl( 
-                        x=df_plot['Time'],
+                        x=df_plot['Frame'],
                         y=df_plot[col],
                         name=name,
                         mode='lines',
@@ -127,7 +127,7 @@ def process_file_optimized(filename):
         print(f"  -> Salvato: {output_filename}")
 
 def main():
-    csv_files = glob.glob("Data/Session2/Optitrack - 60Hz/*.csv")
+    csv_files = glob.glob("../ProcessedData/*.csv")
     for csv_file in csv_files:
         process_file_optimized(csv_file)
 
