@@ -1,192 +1,205 @@
 import numpy as np
 import pandas as pd
-import re
+from scipy.spatial.transform import Rotation as R
+from scipy.ndimage import gaussian_filter1d
+import sys
 
-class BVHJoint:
-    def __init__(self, name, parent=None):
+# --- CLASS & PARSING (Unchanged) ---
+class BvhJoint:
+    def __init__(self, name, parent):
         self.name = name
         self.parent = parent
-        self.children = []
         self.offset = np.zeros(3)
-        self.channels = []
-        self.channel_indices = []  # Indices in the motion data array
-        self.matrix_local = np.identity(4)
-        self.world_pos = np.zeros(3)
-
-def euler_to_matrix(channels, values, order="ZXY"):
-    # Costruisce la matrice di rotazione dai canali Euler (gradi)
-    # Ordine standard BVH spesso è Zrotation, Xrotation, Yrotation
-    rx, ry, rz = 0, 0, 0
-    for ch, val in zip(channels, values):
-        if ch.lower() == 'xrotation': rx = np.radians(val)
-        elif ch.lower() == 'yrotation': ry = np.radians(val)
-        elif ch.lower() == 'zrotation': rz = np.radians(val)
-    
-    cx, sx = np.cos(rx), np.sin(rx)
-    cy, sy = np.cos(ry), np.sin(ry)
-    cz, sz = np.cos(rz), np.sin(rz)
-    
-    # Matrici base
-    m_x = np.array([[1, 0, 0, 0], [0, cx, -sx, 0], [0, sx, cx, 0], [0, 0, 0, 1]])
-    m_y = np.array([[cy, 0, sy, 0], [0, 1, 0, 0], [-sy, 0, cy, 0], [0, 0, 0, 1]])
-    m_z = np.array([[cz, -sz, 0, 0], [sz, cz, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
-    
-    # Moltiplicazione nell'ordine specificato (di solito Z * X * Y per BVH)
-    # Nota: la moltiplicazione matriciale va letta da destra a sinistra rispetto all'ordine di applicazione
-    # Se l'ordine nel file è Z, X, Y, la matrice risultante è Y @ X @ Z
-    
-    mat = np.identity(4)
-    # Ordine tipico BVH: Z, poi X, poi Y
-    mat = m_y @ m_x @ m_z
-    return mat
-
-def parse_bvh_hierarchy(filename):
-    joints = {}
-    joint_stack = []
-    root_joint = None
-    motion_data_start = 0
-    channel_counter = 0
-    frame_time = 0.016667
-
-    with open(filename, 'r') as f:
-        lines = f.readlines()
+        self.channel_names = []
+        self.children = []
         
-    for i, line in enumerate(lines):
-        line = line.strip()
-        tokens = re.split(r'\s+', line)
-        
-        if tokens[0] == "ROOT" or tokens[0] == "JOINT":
-            name = tokens[1]
-            parent = joint_stack[-1] if joint_stack else None
-            joint = BVHJoint(name, parent)
-            joints[name] = joint
-            if parent: parent.children.append(joint)
-            if not root_joint: root_joint = joint
-            joint_stack.append(joint)
-            
-        elif tokens[0] == "End": # End Site
-            joint = BVHJoint("EndSite_" + joint_stack[-1].name, joint_stack[-1])
-            joint_stack[-1].children.append(joint)
-            joint_stack.append(joint)
-            
-        elif tokens[0] == "OFFSET":
-            joint_stack[-1].offset = np.array([float(tokens[1]), float(tokens[2]), float(tokens[3])])
-            
-        elif tokens[0] == "CHANNELS":
-            count = int(tokens[1])
-            joint_stack[-1].channels = tokens[2:]
-            joint_stack[-1].channel_indices = list(range(channel_counter, channel_counter + count))
-            channel_counter += count
-            
-        elif tokens[0] == "}":
-            joint_stack.pop()
-            
-        elif tokens[0] == "MOTION":
-            pass
-        elif tokens[0] == "Frame" and tokens[1] == "Time:":
-            frame_time = float(tokens[2])
-            motion_data_start = i + 1
-            break
-            
-    return root_joint, joints, lines[motion_data_start:], frame_time
+    def add_child(self, child):
+        self.children.append(child)
 
-def calculate_accelerations(bvh_file, target_joints=["RightHand", "LeftHand"]):
-    print(f"Elaborazione file: {bvh_file}...")
-    root, all_joints, motion_lines, frame_time = parse_bvh_hierarchy(bvh_file)
+def parse_bvh(file_path):
+    with open(file_path, 'r') as f:
+        content = f.read()
+
+    # Split into Hierarchy and Motion
+    hierarchy_str, motion_str = content.split('MOTION')
     
-    # Caricamento dati motion
-    motion_data = np.loadtxt(motion_lines)
+    # --- Parse Hierarchy ---
+    lines = [l.strip() for l in hierarchy_str.split('\n') if l.strip()]
+    
+    joints = []
+    stack = []
+    
+    for line in lines:
+        parts = line.split()
+        token = parts[0]
+        
+        if token in ['ROOT', 'JOINT']:
+            name = parts[1]
+            parent = stack[-1] if stack else None
+            new_joint = BvhJoint(name, parent)
+            joints.append(new_joint)
+            if parent:
+                parent.add_child(new_joint)
+            stack.append(new_joint)
+            
+        elif token == 'End': # End Site
+            name = stack[-1].name + "_EndSite"
+            parent = stack[-1]
+            new_joint = BvhJoint(name, parent)
+            stack.append(new_joint)
+            
+        elif token == 'OFFSET':
+            stack[-1].offset = np.array([float(parts[1]), float(parts[2]), float(parts[3])])
+            
+        elif token == 'CHANNELS':
+            count = int(parts[1])
+            stack[-1].channel_names = parts[2 : 2+count]
+            
+        elif token == '}':
+            stack.pop()
+
+    # --- Parse Motion ---
+    motion_lines = [l.strip() for l in motion_str.split('\n') if l.strip()]
+    
+    frames = 0
+    frame_time = 0.0333
+    motion_data = []
+    
+    for line in motion_lines:
+        if line.startswith('Frames:'):
+            frames = int(line.split()[1])
+        elif line.startswith('Frame Time:'):
+            frame_time = float(line.split()[2])
+        else:
+            line_data = [float(x) for x in line.split()]
+            motion_data.append(line_data)
+            
+    motion_arr = np.array(motion_data)
+    
+    return joints, motion_arr, frame_time
+
+# --- CALCULATION (Unchanged) ---
+def compute_fk_and_acceleration(joints, motion_data, frame_time):
     num_frames = motion_data.shape[0]
+    num_joints = len(joints)
     
-    print(f"Frame totali: {num_frames}, Frame Time: {frame_time}s")
-    
-    # Dizionario per salvare le posizioni nel tempo
-    trajectories = {name: [] for name in target_joints}
-    times = []
+    # Map columns
+    col_idx = 0
+    joint_col_map = {}
+    for joint in joints:
+        num_ch = len(joint.channel_names)
+        if num_ch > 0:
+            joint_col_map[joint.name] = (col_idx, col_idx + num_ch)
+            col_idx += num_ch
+        else:
+            joint_col_map[joint.name] = None
 
+    world_positions = np.zeros((num_frames, num_joints, 3))
+    print(f"Calculating positions for {num_frames} frames...")
+    
     for f in range(num_frames):
-        frame_vals = motion_data[f]
-        times.append(f * frame_time)
+        joint_matrices = {None: np.eye(4)} 
         
-        # Forward Kinematics
-        # Stack per attraversare l'albero: (joint, parent_transform)
-        stack = [(root, np.identity(4))]
-        
-        while stack:
-            joint, parent_mat = stack.pop(0)
+        for i, joint in enumerate(joints):
+            local_translation = np.eye(4)
+            local_translation[:3, 3] = joint.offset
             
-            # 1. Costruisci matrice locale (Traslazione Offset)
-            local_trans = np.identity(4)
-            local_trans[:3, 3] = joint.offset
+            motion_transform = np.eye(4)
             
-            # 2. Aggiungi Rotazione (se ci sono canali)
-            local_rot = np.identity(4)
-            if joint.channel_indices:
-                # Estrae i valori per questo giunto
-                vals = frame_vals[joint.channel_indices]
-                chans = joint.channels
+            if joint.name in joint_col_map and joint_col_map[joint.name] is not None:
+                start, end = joint_col_map[joint.name]
+                vals = motion_data[f, start:end]
+                ch_names = joint.channel_names
                 
-                # Se è il Root, gestisci anche la posizione globale
-                pos_offset = np.zeros(3)
-                rot_vals = []
-                rot_chans = []
+                trans_vec = np.zeros(3)
+                if 'Xposition' in ch_names: trans_vec[0] = vals[ch_names.index('Xposition')]
+                if 'Yposition' in ch_names: trans_vec[1] = vals[ch_names.index('Yposition')]
+                if 'Zposition' in ch_names: trans_vec[2] = vals[ch_names.index('Zposition')]
                 
-                val_idx = 0
-                for ch in chans:
-                    if 'position' in ch.lower():
-                        if 'X' in ch: pos_offset[0] = vals[val_idx]
-                        if 'Y' in ch: pos_offset[1] = vals[val_idx]
-                        if 'Z' in ch: pos_offset[2] = vals[val_idx]
-                    elif 'rotation' in ch.lower():
-                        rot_vals.append(vals[val_idx])
-                        rot_chans.append(ch)
-                    val_idx += 1
+                motion_translation = np.eye(4)
+                motion_translation[:3, 3] = trans_vec
                 
-                # Applica traslazione del root se presente
-                local_trans[:3, 3] += pos_offset
-                
-                # Calcola matrice di rotazione
-                local_rot = euler_to_matrix(rot_chans, rot_vals)
+                rot_channels = [c for c in ch_names if 'rotation' in c]
+                if rot_channels:
+                    euler_order = "".join([c[0] for c in rot_channels]).upper() 
+                    euler_vals = [vals[ch_names.index(c)] for c in rot_channels]
+                    
+                    r = R.from_euler(euler_order, euler_vals, degrees=True)
+                    rot_matrix = np.eye(4)
+                    rot_matrix[:3, :3] = r.as_matrix()
+                    motion_transform = motion_translation @ rot_matrix
+                else:
+                    motion_transform = motion_translation
 
-            # Matrice Globale = Parent * (Offset + Pos) * Rotazione
-            global_mat = parent_mat @ local_trans @ local_rot
-            
-            # Salva posizione se è un target
-            if joint.name in target_joints:
-                trajectories[joint.name].append(global_mat[:3, 3])
-            
-            # Continua con i figli
-            for child in joint.children:
-                stack.append((child, global_mat))
+            local_matrix = local_translation @ motion_transform
+            parent_matrix = joint_matrices[joint.parent.name] if joint.parent else np.eye(4)
+            world_matrix = parent_matrix @ local_matrix
+            joint_matrices[joint.name] = world_matrix
+            world_positions[f, i] = world_matrix[:3, 3]
 
-    # Calcolo Derivate e Salvataggio
-    for joint_name in target_joints:
-        pos_array = np.array(trajectories[joint_name]) # Shape (N, 3)
-        
-        # Velocità (m/s)
-        vel = np.gradient(pos_array, frame_time, axis=0)
-        # Accelerazione (m/s^2)
-        acc = np.gradient(vel, frame_time, axis=0)
-        # Modulo
-        acc_mag = np.linalg.norm(acc, axis=1)
-        
-        # Converti in DataFrame
-        df = pd.DataFrame({
-            'Time_sec': times,
-            'PosX': pos_array[:,0], 'PosY': pos_array[:,1], 'PosZ': pos_array[:,2],
-            'AccX': acc[:,0], 'AccY': acc[:,1], 'AccZ': acc[:,2],
-            'Acc_Total': acc_mag
-        })
-        
-        # Opzionale: Converti cm -> metri se il file è in cm
-        # df['Acc_Total_m_s2'] = df['Acc_Total'] / 100.0 
-        
-        csv_name = f"accelerazioni_{joint_name}.csv"
-        df.to_csv(csv_name, index=False, sep=',')
-        print(f"Salvato: {csv_name} (Picco accelerazione: {np.max(acc_mag):.2f})")
+    print("Calculating derivatives (with smoothing)...")
+    dt = frame_time
+    velocity = np.gradient(world_positions, axis=0) / dt
+    acceleration = np.gradient(velocity, axis=0) / dt
+    acceleration = gaussian_filter1d(acceleration, sigma=2, axis=0)
+    
+    return acceleration
 
-# --- ESECUZIONE ---
-input_file = "../BVH-60Hz/Elia 2 - Take 2026-01-14 04.29.52 PM_002_Skeleton 001.bvh"
+# --- MAIN (Modified for specific export) ---
+def main(input_bvh, output_csv):
+    print(f"Reading {input_bvh}...")
+    try:
+        joints, motion_data, frame_time = parse_bvh(input_bvh)
+    except FileNotFoundError:
+        print("Error: File not found.")
+        return
 
-# Puoi cambiare i nomi qui se nel tuo file sono diversi (es. RightWrist)
-calculate_accelerations(input_file, target_joints=["RightHand", "LeftHand"])
+    accel_data = compute_fk_and_acceleration(joints, motion_data, frame_time)
+    
+    frames = accel_data.shape[0]
+    joint_names = [j.name for j in joints]
+    
+    # --- MODIFICATION START ---
+    target_joints = ['RightHand', 'LeftHand']
+    col_names = []
+    data_list = []
+    
+    # Create a map to find joint indices quickly
+    name_to_index = {name: i for i, name in enumerate(joint_names)}
+    
+    print(f"Extracting data for: {', '.join(target_joints)}")
+    
+    for target in target_joints:
+        if target in name_to_index:
+            idx = name_to_index[target]
+            # Add columns for X, Y, Z
+            col_names.extend([f"{target}_Accel_X", f"{target}_Accel_Y", f"{target}_Accel_Z"])
+            # Extract data for this joint (all frames, this joint index, all coordinates)
+            data_list.append(accel_data[:, idx, :])
+        else:
+            print(f"WARNING: Joint '{target}' not found in BVH file.")
+
+    if not data_list:
+        print("Error: No target joints found. CSV will not be created.")
+        return
+
+    # Stack the selected data horizontally
+    flat_data = np.hstack(data_list)
+    
+    df = pd.DataFrame(flat_data, columns=col_names)
+    df.insert(0, 'Time', np.arange(frames) * frame_time)
+    df.insert(0, 'Frame', np.arange(frames))
+    # --- MODIFICATION END ---
+    
+    df.to_csv(output_csv, index=False)
+    print(f"Success! Filtered acceleration data saved to: {output_csv}")
+
+if __name__ == "__main__":
+    # Standard Usage
+    if len(sys.argv) == 3:
+        main(sys.argv[1], sys.argv[2])
+    else:
+        # Default fallback
+        input_file = "Data/Session2/Optitrack - 60Hz/Davide 1 - Take 2026-01-14 04.29.52 PM_004_Skeleton 001.bvh"
+        output_file = "Data/Session2/Optitrack - 60Hz/Davide 1 - output_hands_accel.csv"
+        main(input_file, output_file)

@@ -119,7 +119,7 @@ def process_file_optimized(filename):
     print(f"  -> Salvato: {output_filename}")
 
 def main():
-    csv_files = glob.glob("*.csv")
+    csv_files = glob.glob("Data/Session2/Optitrack - 60Hz/*.csv")
     for csv_file in csv_files:
         process_file_optimized(csv_file)
 
