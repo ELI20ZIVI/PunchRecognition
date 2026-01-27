@@ -12,8 +12,8 @@ from tensorflow.keras import layers, models, callbacks, regularizers
 from tensorflow.keras.utils import to_categorical
 
 # COSTANTI DI CONFIGURAZIONE
-DATASET_PATH = '../Labelled'
-MODEL_SAVE_PATH = 'boxing_bilstm.keras'
+DATASET_PATH = 'Data/Labelled'
+MODEL_SAVE_PATH = 'Data/Model/boxing_bilstm.keras'
 
 # --- PARAMETRI DI TRAINING ---
 # WINDOW_SIZE: Numero di frame consecutivi che formano una finestra temporale
@@ -293,6 +293,8 @@ def build_bilstm_model(input_shape, num_classes):
 # MAIN
 # ============================================================================
 if __name__ == "__main__":
+    print(tf.config.list_physical_devices('GPU'))
+
     # --- CARICAMENTO DEI DATI ---
     print("=" * 70)
     print("FASE 1: Caricamento dei dati")
