@@ -493,7 +493,7 @@ if __name__ == "__main__":
     # Load and prepare data #
     #########################
     
-    data = load_data('Data/Labelled')
+    data = load_data('../Labelled')
 
     # Create windowed data for time series models (memory-efficient generator)
     window_size = 320   # e.g., 320 samples per window
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     model = train_model_cnn_lstm(X_windows, y_windows, window_size, base_model=train_model_CNN(X_windows, y_windows, window_size))
 
     # Save the trained model
-    # import joblib
-    # model_path = 'Data/Model/random_forest_model.joblib'
-    # joblib.dump(model, model_path)
-    # print(f"Trained Random Forest model saved to: {model_path}")
+    import joblib
+    model_path = 'model.joblib'
+    joblib.dump(model, model_path)
+    print(f"Trained Random Forest model saved to: {model_path}")

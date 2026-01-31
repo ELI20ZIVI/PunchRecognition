@@ -106,8 +106,6 @@ class WebPunchAnalyzer:
         
         # Carica modello
         self.model = None
-        self.scaler = None
-        self.label_info = None
         self._load_model()
         
         # Buffer e stato
@@ -131,13 +129,13 @@ class WebPunchAnalyzer:
         
         for path in possible_paths:
             # Prova direttamente nella cartella
-            model_file = os.path.join(path, 'punch_recognition_model.pkl')
+            model_file = os.path.join(path, 'model.joblib')
             if os.path.exists(model_file):
                 self._load_from_path(path)
                 return
             
             # Prova nella sottocartella Model
-            model_file = os.path.join(path, 'Model', 'punch_recognition_model.pkl')
+            model_file = os.path.join(path, 'Model', 'model.joblib')
             if os.path.exists(model_file):
                 self._load_from_path(os.path.join(path, 'Model'))
                 return
@@ -147,18 +145,10 @@ class WebPunchAnalyzer:
     def _load_from_path(self, path):
         """Carica il modello da un percorso specifico."""
         try:
-            model_file = os.path.join(path, 'punch_recognition_model.pkl')
-            scaler_file = os.path.join(path, 'punch_recognition_scaler.pkl')
-            labels_file = os.path.join(path, 'punch_recognition_labels.pkl')
+            model_file = os.path.join(path, 'model.joblib')
             
             self.model = joblib.load(model_file)
             print(f"Modello caricato da: {model_file}", file=sys.stderr)
-            
-            if os.path.exists(scaler_file):
-                self.scaler = joblib.load(scaler_file)
-            
-            if os.path.exists(labels_file):
-                self.label_info = joblib.load(labels_file)
                 
         except Exception as e:
             print(f"Errore caricamento modello: {e}", file=sys.stderr)
@@ -272,10 +262,6 @@ class WebPunchAnalyzer:
                 # Estrai features
                 features = extract_features(window).reshape(1, -1)
                 
-                # Scala features se disponibile
-                if self.scaler is not None:
-                    features = self.scaler.transform(features)
-                
                 # Predizione
                 if hasattr(self.model, 'predict_proba'):
                     probs = self.model.predict_proba(features)[0]
@@ -318,14 +304,6 @@ class WebPunchAnalyzer:
     
     def _get_label_name(self, label_id):
         """Converte l'ID della label nel nome del punch."""
-        if self.label_info is not None:
-            if label_id == self.label_info.get('guard_label'):
-                return "guard_noPunches"
-            
-            for filename, label in self.label_info.get('labels', {}).items():
-                if label == label_id:
-                    return filename.replace('.csv', '')
-        
         return self.PUNCH_NAMES.get(label_id, f"Unknown_{label_id}")
     
     def _simulate_detection(self, window):
