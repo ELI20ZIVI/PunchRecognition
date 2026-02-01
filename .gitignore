@@ -177,11 +177,10 @@ pyrightconfig.json
 Data/Session1/
 Data/Session2/
 
-# Models
-dashboard/Model/
-dashboard/dataTest.csv
-
 # Envs
 Data/Analyzer/sportTech
 dashboard/sportTech
 Data/Model/sportTechTrain
+
+# Dashboard zip
+dashboard.zip

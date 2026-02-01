@@ -38,7 +38,7 @@ def load_data(file_path: str) -> pd.DataFrame:
         print(f"Data folder not found: {file_path}")
         return pd.DataFrame(columns=['Time'] + FEATURE_COLUMNS + ['Label'])
 
-    for root, _dirs, files in os.walk(file_path):
+    for root, dirs, files in os.walk(file_path):
         for fname in files:
             if not fname.endswith('.csv'):
                 continue
@@ -287,8 +287,8 @@ if __name__ == "__main__":
     data = load_data('../Labelled')
 
     # Create windowed data for time series models (memory-efficient generator)
-    window_size = 320   # e.g., 320 samples per window
-    step_size = 30      # e.g., 10% overlap
+    window_size = 60   # e.g., 60 samples per window
+    step_size = 6      # e.g., 10% overlap
     
     # Process in batches instead of loading all at once
     print("Processing windowed data in batches...")
@@ -315,8 +315,7 @@ if __name__ == "__main__":
 
     model = train_model_cnn_lstm(X_windows, y_windows, window_size, base_model=train_model_CNN(X_windows, y_windows, window_size))
 
-    # Save the trained model
-    import joblib
-    model_path = 'model.joblib'
-    joblib.dump(model, model_path)
-    print(f"Trained Random Forest model saved to: {model_path}")
+    # Save the trained model in Keras native format
+    model_path = 'model.keras'
+    model.save(model_path)
+    print(f"Trained CNN-LSTM model saved to: {model_path}")
