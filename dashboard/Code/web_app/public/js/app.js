@@ -444,6 +444,9 @@ class BoxingAnalyzer {
                 <td>${this.formatTime(punch.timestamp)}</td>
                 <td>${(punch.confidence * 100).toFixed(1)}%</td>
                 <td>${punch.peakVelocity.toFixed(2)} m/s</td>
+                <td>${punch.meanVelocity.toFixed(2)} m/s</td>
+                <td>${punch.peakAcceleration.toFixed(2)} m/s²</td>
+                <td>${punch.meanAcceleration.toFixed(2)} m/s²</td>
                 <td>${punch.duration.toFixed(0)} ms</td>
             `;
             row.addEventListener('click', () => this.openPunchDetail(punch, index + 1));
@@ -463,8 +466,9 @@ class BoxingAnalyzer {
         document.getElementById('detailConfidence').textContent = `${(punch.confidence * 100).toFixed(1)}%`;
         document.getElementById('detailVelocity').textContent = `${punch.peakVelocity.toFixed(2)} m/s`;
         document.getElementById('detailDuration').textContent = `${punch.duration.toFixed(0)} ms`;
-        document.getElementById('detailAcceleration').textContent = `${punch.peakAcceleration.toFixed(2)} g`;
-        document.getElementById('detailRotation').textContent = `${punch.peakRotation.toFixed(1)} °/s`;
+        document.getElementById('detailAcceleration').textContent = `${punch.peakAcceleration.toFixed(2)} m/s²`;
+        document.getElementById('detailMeanVelocity').textContent = `${punch.meanVelocity.toFixed(2)} m/s`;
+        document.getElementById('detailMeanAcceleration').textContent = `${punch.meanAcceleration.toFixed(2)} m/s²`;
         
         // Create punch data chart
         this.createPunchDataChart(punch);

@@ -96,11 +96,11 @@ if __name__ == "__main__":
     MODE = 'directory'
     
     # Frequenze
-    ORIGINAL_FREQ = 320  # Hz
+    ORIGINAL_FREQ = 360  # Hz
     TARGET_FREQ = 60     # Hz
 
     # Per modalità 'directory'
-    INPUT_DIR = "../Labelled/1st"
+    INPUT_DIR = "../ProcessedData/todo"
     OUTPUT_DIR = None  # None per creare sottocartella 'downsampled'
     FILE_PATTERN = "*.csv"
     # ==========================================

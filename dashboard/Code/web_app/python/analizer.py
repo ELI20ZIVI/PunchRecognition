@@ -60,8 +60,8 @@ class WebPunchAnalyzer:
         """
         self.model_path = model_path
         # Parametri identici al training
-        self.window_size = 60  # 60 frames @ 60Hz = ~1 second
-        self.step_size = 6     # Step per sliding window (come nel training)
+        self.window_size = 120  # 60 frames @ 60Hz = ~1 second
+        self.step_size = 12     # Step per sliding window (come nel training)
         self.cooldown_frames = 60  # ~0.5 secondi tra colpi
         self.confidence_threshold = 0.85  # Soglia di confidenza
         self.sample_rate = 60
@@ -135,49 +135,154 @@ class WebPunchAnalyzer:
         # Reset stato
         self.detected_punches = []
         self.punch_counts = Counter()
-        self.last_punch_frame = -self.cooldown_frames  # Permette detection dal primo frame
         self.time_data = time_column  # Salva per usarlo nei timestamp
         
-        # Analizza con sliding window efficiente (come nel training)
-        # Usa step_size per muoversi tra le finestre
-        for i in range(0, total_frames - self.window_size + 1, self.step_size):
-            # Verifica cooldown
-            if (i - self.last_punch_frame) < self.cooldown_frames:
-                continue
-            
-            # Estrai finestra corrente (come numpy array)
+        # Debug: tracking all predictions
+        self.all_predictions = Counter()
+        self.filtered_by_confidence = Counter()
+        
+        # Analizza con sliding window
+        i = 0
+        max_start = total_frames - self.window_size + 1
+        
+        while i < max_start:
+            # Estrai finestra corrente
             window = data[i:i + self.window_size]
             
-            # Rileva colpo
-            punch = self._detect_punch_from_window(window, i)
-            if punch:
-                self.detected_punches.append(punch)
-                self.punch_counts[punch['type']] += 1
-                self.last_punch_frame = i
+            # Rileva pattern grezzo nella finestra
+            detection = self._detect_raw_pattern(window)
             
-            # Aggiorna progresso
-            if i % max(1, (total_frames - self.window_size) // 10) == 0:
-                progress = 30 + int((i / (total_frames - self.window_size)) * 50)
-                print_progress(progress)
+            if not detection:
+                # Nessun colpo rilevato, avanza
+                i += self.step_size
+                continue
+                
+            start_offset = detection['start_offset']
+            
+            # CASO 1: Riallineamento (Punch parziale)
+            # Se il colpo inizia dopo l'inizio della finestra, sposta la finestra
+            # esattamente all'inizio del colpo
+            if start_offset > 0:
+                i += start_offset
+                continue
+
+            # Controlla che type sia presente (colpo allineato)
+            if 'type' not in detection:
+                # Non è un colpo valido, avanza standard
+                i += self.step_size
+                continue
+            
+            # CASO 2: Colpo allineato (start_offset == 0)
+            # Il colpo inizia all'indice 0 della finestra corrente
+            punch_type = detection['type']
+            end_offset = detection['end_offset'] # Indice ultimo frame del colpo (es. 59)
+            confidence = detection['confidence']
+            
+            # Filtra per confidenza
+            if confidence < self.confidence_threshold:
+                self.filtered_by_confidence[punch_type] += 1
+                print(f"DEBUG: Scartato {punch_type} per bassa confidenza ({confidence:.3f})", file=sys.stderr)
+                i += self.step_size # Avanza standard se scartato
+                continue
+                
+            # Log valido
+            self.all_predictions[punch_type] += 1
+            if punch_type in ['jab_left', 'jab_right']:
+                 print(f"DEBUG: Rilevato {punch_type} CONF:{confidence:.3f} Frames:{end_offset+1}", file=sys.stderr)
+            
+            # Raccogli i frame del colpo
+            # Inizia con il segmento trovato nella finestra corrente
+            frames_accumulator = [window[:end_offset+1]]
+            
+            # ESTENSIONE (While interno)
+            # Se il colpo arriva fino alla fine della finestra (es. indice 59 su 60),
+            # controlla le finestre successive per vedere se continua
+            current_end_in_window = end_offset
+            extended_frames_count = 0
+            
+            # Loop per estendere se necessario
+            while current_end_in_window == self.window_size - 1:
+                # Calcola dove inizierebbe la prossima finestra
+                # Attenzione: dobbiamo guardare subito dopo l'ultimo frame processato
+                # frames_accumulator contiene segmenti consecutivi
+                total_frames_collected = sum(len(x) for x in frames_accumulator)
+                next_window_start = i + total_frames_collected
+                
+                if next_window_start >= max_start:
+                    break
+                    
+                next_window = data[next_window_start : next_window_start + self.window_size]
+                next_det = self._detect_raw_pattern(next_window)
+                
+                # Continua solo se trova LO STESSO tipo di colpo e inizia SUBITO (aligned)
+                if next_det and next_det.get('start_offset') == 0 and next_det.get('type') == punch_type:
+                    next_end = next_det['end_offset']
+                    frames_accumulator.append(next_window[:next_end+1])
+                    current_end_in_window = next_end
+                    extended_frames_count += 1
+                    # Sicurezza per evitare loop infiniti su dati corrotti
+                    if extended_frames_count > 10: 
+                        break
+                else:
+                    # Il colpo è finito o cambiato
+                    break
+            
+            # Assembla tutti i dati del colpo
+            full_punch_data = np.concatenate(frames_accumulator)
+            
+            # Calcola metriche complete
+            metrics = self._calculate_punch_metrics(full_punch_data)
+            
+            # Timestamp
+            if self.time_data is not None:
+                # Prendi il timestamp del centro del colpo
+                center_idx = i + len(full_punch_data) // 2
+                if center_idx < len(self.time_data):
+                    timestamp = float(self.time_data[center_idx])
+                else:
+                    timestamp = float(self.time_data[-1])
+            else:
+                timestamp = (i + len(full_punch_data) // 2) / self.sample_rate
+                
+            punch_record = {
+                'type': punch_type,
+                'timestamp': timestamp,
+                'confidence': confidence,
+                'peakVelocity': metrics['peak_velocity'],
+                'peakAcceleration': metrics['peak_acceleration'],
+                'meanAcceleration': metrics['mean_acceleration'],
+                'meanVelocity': metrics['mean_velocity'],
+                'duration': metrics['duration'],
+                'sensorData': full_punch_data[-30:].tolist() if len(full_punch_data) > 30 else full_punch_data.tolist()
+            }
+            
+            self.detected_punches.append(punch_record)
+            self.punch_counts[punch_type] += 1
+            
+            # Skip post-punch
+            # Sposta la window alla prima guardia disponibile (fine del colpo)
+            total_len = sum(len(x) for x in frames_accumulator)
+            i += total_len
+            
+            # Aggiorna progresso visuale
+            if i % max(1, total_frames // 10) == 0:
+                prog = 30 + int((i / total_frames) * 50)
+                print_progress(min(prog, 85))
         
         print_progress(85)
         
-        # Calcola statistiche finali
-        # Usa la colonna Time se disponibile, altrimenti calcola dai frame
+        # Debug stats
+        print(f"\n=== DEBUG: Statistiche ===", file=sys.stderr)
+        print(f"Totale predizioni: {dict(self.all_predictions)}", file=sys.stderr)
+        print(f"Scartati per confidence: {dict(self.filtered_by_confidence)}", file=sys.stderr)
+        
+        # Finalizza risultati
         if time_column is not None and len(time_column) > 0:
             duration = float(time_column[-1] - time_column[0])
-            print(f"Durata calcolata dalla colonna Time: {duration:.2f}s", file=sys.stderr)
         else:
             duration = total_frames / self.sample_rate
-            print(f"Durata calcolata dai frame: {duration:.2f}s", file=sys.stderr)
-        
+            
         total_punches = sum(self.punch_counts.values())
-        
-        # Debug: stampa i tipi di punch rilevati
-        if self.detected_punches:
-            unique_types = set(p['type'] for p in self.detected_punches)
-            print(f"Tipi di punch rilevati: {unique_types}", file=sys.stderr)
-            print(f"Distribuzione: {dict(self.punch_counts)}", file=sys.stderr)
         
         results = {
             'totalPunches': total_punches,
@@ -188,31 +293,104 @@ class WebPunchAnalyzer:
         }
         
         print_progress(100)
-        
         return results
-    
+
+    def _detect_raw_pattern(self, window):
+        """
+        Analizza una finestra e restituisce i dati grezzi di rilevamento.
+        Non applica filtri di confidenza qui per permettere logiche superiori.
+        Returns:
+            dict: {type, start_offset, end_offset, confidence} o None
+        """
+        if self.model is None:
+             # Simulation fallback
+             t, c = self._simulate_detection(window)
+             if t: return {'type': t, 'start_offset': 0, 'end_offset': len(window)-1, 'confidence': c}
+             return None
+
+        # Reshape (1, 60, 6)
+        model_input = window.reshape(1, window.shape[0], window.shape[1])
+        
+        try:
+            predictions = self.model.predict(model_input, verbose=0)
+            
+            # Gestione TCN (Sequenza)
+            if len(predictions.shape) == 3:
+                # Shape (1, 60, 7)
+                probs = predictions[0] # (60, 7)
+                classes = np.argmax(probs, axis=1) # (60,)
+                
+                # Trova indici non-guardia
+                non_guard = np.where(classes != 0)[0]
+                
+                if len(non_guard) == 0:
+                    return None
+                
+                start_offset = int(non_guard[0])
+                
+                # Se non è allineato, ritorna solo l'offset per riallineare
+                if start_offset > 0:
+                    return {'start_offset': start_offset}
+                
+                # Se è allineato (start_offset == 0)
+                punch_class = classes[0]
+                punch_type = self._get_label_name(punch_class)
+                
+                # Trova la fine della sequenza di QUESTO punch
+                # Cerca il primo indice dove la classe cambia (diventa 0 o altro punch)
+                changes = np.where((classes != punch_class))[0] # and (classes != 0)
+                
+                if len(changes) > 0:
+                    end_offset = int(changes[0]) - 1 # L'ultimo indice valido è uno prima del cambio
+                else:
+                    end_offset = self.window_size - 1 # Fino alla fine
+                
+                # Calcola confidenza SOLO sui frame del colpo
+                # (Fix per Jab corti che venivano mediati con la guardia)
+                punch_probs = probs[:end_offset+1, punch_class]
+                confidence = float(np.mean(punch_probs))
+                
+                return {
+                    'type': punch_type,
+                    'start_offset': 0,
+                    'end_offset': end_offset,
+                    'confidence': confidence
+                }
+                
+            else:
+                # Fallback per modelli non-sequenziali (CNN standard)
+                # Assume che la predizione valga per tutta la finestra
+                p_class = np.argmax(predictions[0])
+                conf = float(predictions[0][p_class])
+                p_type = self._get_label_name(p_class)
+                
+                if p_class == 0: return None
+                
+                return {
+                    'type': p_type,
+                    'start_offset': 0,
+                    'end_offset': self.window_size - 1,
+                    'confidence': conf
+                }
+                
+        except Exception as e:
+            # print(f"Error in prediction: {e}", file=sys.stderr)
+            return None
+
     def _identify_sensor_columns(self, df):
         """Identifica le colonne dei sensori nel dataframe."""
-        # Prima cerca le colonne esatte usate nel training
         if all(col in df.columns for col in FEATURE_COLUMNS):
-            print(f"Trovate colonne esatte del training: {FEATURE_COLUMNS}", file=sys.stderr)
             return FEATURE_COLUMNS
         
-        # Prova varianti case-insensitive
         columns_lower = {c.lower(): c for c in df.columns}
         feature_cols_lower = [c.lower() for c in FEATURE_COLUMNS]
         
         if all(c in columns_lower for c in feature_cols_lower):
-            matched = [columns_lower[c] for c in feature_cols_lower]
-            print(f"Trovate colonne (case-insensitive): {matched}", file=sys.stderr)
-            return matched
+            return [columns_lower[c] for c in feature_cols_lower]
         
-        # Pattern generici come fallback
         possible_patterns = [
             ['RightHand_Accel_X', 'RightHand_Accel_Y', 'RightHand_Accel_Z', 
              'LeftHand_Accel_X', 'LeftHand_Accel_Y', 'LeftHand_Accel_Z'],
-            ['righthand_accel_x', 'righthand_accel_y', 'righthand_accel_z',
-             'lefthand_accel_x', 'lefthand_accel_y', 'lefthand_accel_z'],
         ]
         
         for pattern in possible_patterns:
@@ -220,9 +398,6 @@ class WebPunchAnalyzer:
             if all(p in columns_lower for p in pattern_lower):
                 return [columns_lower[p] for p in pattern_lower]
         
-        print(f"ATTENZIONE: Colonne non corrispondenti al training. Disponibili: {df.columns.tolist()}", file=sys.stderr)
-        
-        # Fallback: usa le prime 6 colonne numeriche
         cols_to_use = df.columns.tolist()
         for time_col in ['Time', 'time', 'Timestamp', 'timestamp', 'Label', 'label']:
             if time_col in cols_to_use:
@@ -230,162 +405,56 @@ class WebPunchAnalyzer:
         
         numeric_cols = df[cols_to_use].select_dtypes(include=[np.number]).columns.tolist()
         if len(numeric_cols) >= 6:
-            result = numeric_cols[:6]
-            print(f"Usando fallback (prime 6 colonne numeriche): {result}", file=sys.stderr)
-            return result
-        
-        return numeric_cols if numeric_cols else None
-    
-    def _detect_punch_from_window(self, window, frame_index):
-        """Rileva un colpo da una finestra di dati.
-        
-        Args:
-            window: numpy array di shape (window_size, num_features)
-            frame_index: indice del frame iniziale della finestra
-        """
-        
-        if self.model is not None:
-            try:
-                # IMPORTANTE: Il modello CNN-LSTM usa dati RAW (non normalizzati)
-                # Reshape per Keras: (batch_size=1, window_size, num_features)
-                model_input = window.reshape(1, window.shape[0], window.shape[1])
-                
-                # Predizione con modello Keras
-                if KERAS_AVAILABLE and hasattr(self.model, 'predict'):
-                    probs = self.model.predict(model_input, verbose=0)[0]
-                    pred_class = np.argmax(probs)
-                    confidence = float(probs[pred_class])
-                # Fallback sklearn (se mai usato)
-                elif hasattr(self.model, 'predict_proba'):
-                    features = window.reshape(1, -1)
-                    probs = self.model.predict_proba(features)[0]
-                    pred_class = np.argmax(probs)
-                    confidence = float(probs[pred_class])
-                else:
-                    pred_class = self.model.predict(model_input)[0]
-                    confidence = 0.8
-                
-                # Converti label numerica in nome punch
-                punch_type = self._get_label_name(pred_class)
-                
-                # Filtra: ignora classe Idle/guard e bassa confidence
-                if punch_type == 'guard_noPunches' or confidence < self.confidence_threshold:
-                    return None
-                
-            except Exception as e:
-                print(f"Errore predizione: {e}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                return None
-        else:
-            # Simulazione per testing
-            punch_type, confidence = self._simulate_detection(window)
-            if punch_type is None:
-                return None
-        
-        # Calcola metriche del colpo
-        # frame_index rappresenta l'inizio della finestra
-        # Il colpo è tipicamente al centro/fine della finestra
-        if self.time_data is not None:
-            # Usa il timestamp reale dalla colonna Time
-            center_frame = frame_index + self.window_size // 2
-            if center_frame < len(self.time_data):
-                punch_timestamp = float(self.time_data[center_frame])
-            else:
-                punch_timestamp = float(self.time_data[-1])
-        else:
-            # Fallback: calcola dal frame index
-            punch_timestamp = (frame_index + self.window_size // 2) / self.sample_rate
-        
-        metrics = self._calculate_punch_metrics(window)
-        
-        return {
-            'type': punch_type,
-            'timestamp': punch_timestamp,
-            'confidence': float(confidence),
-            'peakVelocity': metrics['peak_velocity'],
-            'peakAcceleration': metrics['peak_acceleration'],
-            'peakRotation': metrics['peak_rotation'],
-            'duration': metrics['duration'],
-            'sensorData': window[-30:].tolist()
-        }
+            return numeric_cols[:6]
+        return None
     
     def _get_label_name(self, label_id):
-        """Converte l'ID della label nel nome del punch."""
         return self.PUNCH_NAMES.get(label_id, f"Unknown_{label_id}")
     
     def _simulate_detection(self, window):
-        """Simula il rilevamento per testing senza modello."""
-        # Calcola la magnitudo dell'accelerazione
         acc_magnitude = np.sqrt(np.sum(window[:, :3]**2, axis=1))
         peak_acc = np.max(acc_magnitude)
+        if peak_acc < 2.0: return None, 0
         
-        # Soglia per rilevare un colpo
-        if peak_acc < 2.0:
-            return None, 0
-        
-        # Simula tipo di colpo basato sui pattern
         if window.shape[1] >= 6:
-            gyro_magnitude = np.sqrt(np.sum(window[:, 3:6]**2, axis=1))
-            peak_gyro = np.max(gyro_magnitude)
-        else:
-            peak_gyro = 0
+            peak_gyro = np.max(np.sqrt(np.sum(window[:, 3:6]**2, axis=1)))
+        else: peak_gyro = 0
         
-        # Determina mano (sinistra/destra) basandosi su pattern
         hand = 'left' if np.mean(window[:, 0]) > 0 else 'right'
-        
-        # Determina tipo di colpo - usa formato lowercase con underscore
-        if peak_gyro > 150:
-            punch_type = f'hook_{hand}'
-        elif np.mean(window[:, 2]) > 0.5:
-            punch_type = f'uppercut_{hand}'
-        else:
-            punch_type = f'jab_{hand}'
+        if peak_gyro > 150: punch_type = f'hook_{hand}'
+        elif np.mean(window[:, 2]) > 0.5: punch_type = f'uppercut_{hand}'
+        else: punch_type = f'jab_{hand}'
         
         confidence = min(0.95, 0.6 + (peak_acc - 2.0) * 0.1)
-        
         return punch_type, confidence
     
     def _calculate_punch_metrics(self, window):
-        """Calcola le metriche dettagliate di un colpo."""
-        # Accelerazione
-        acc = window[:, :3]
-        acc_magnitude = np.sqrt(np.sum(acc**2, axis=1))
-        peak_acc = np.max(acc_magnitude)
+        acc_1 = window[:, :3] / 100.0
+        acc_2 = window[:, 3:6] / 100.0
+        acc_magnitude = np.maximum(
+            np.sqrt(np.sum(acc_1**2, axis=1)),
+            np.sqrt(np.sum(acc_2**2, axis=1))
+        )
         
-        # Velocità (integrazione accelerazione)
+        peak_acc = np.max(acc_magnitude)
+        mean_acc = np.mean(acc_magnitude)
+        
         dt = 1.0 / self.sample_rate
         velocity = np.cumsum(acc_magnitude) * dt
         peak_velocity = np.max(velocity)
+        mean_velocity = np.mean(velocity)
         
-        # Rotazione (se disponibile)
-        if window.shape[1] >= 6:
-            gyro = window[:, 3:6]
-            gyro_magnitude = np.sqrt(np.sum(gyro**2, axis=1))
-            peak_rotation = np.max(gyro_magnitude)
-        else:
-            peak_rotation = 0
-        
-        # Durata del colpo (tempo sopra soglia)
-        threshold = peak_acc * 0.5
-        above_threshold = acc_magnitude > threshold
-        duration_frames = np.sum(above_threshold)
-        duration_ms = (duration_frames / self.sample_rate) * 1000
+        duration_ms = (window.shape[0] / self.sample_rate) * 1000
         
         return {
             'peak_acceleration': float(peak_acc),
+            'mean_acceleration': float(mean_acc),
             'peak_velocity': float(peak_velocity),
-            'peak_rotation': float(peak_rotation),
+            'mean_velocity': float(mean_velocity),
             'duration': float(duration_ms)
         }
 
-
-# ============================================================
-# MAIN - Entry point per la web app
-# ============================================================
-
 def main():
-    """Entry point principale per la web app."""
     if len(sys.argv) < 2:
         print("Usage: python analizer.py <csv_file> [model_path]", file=sys.stderr)
         sys.exit(1)
@@ -400,16 +469,12 @@ def main():
     try:
         analyzer = WebPunchAnalyzer(model_path)
         results = analyzer.analyze_csv(csv_path)
-        
-        # Output risultati in formato JSON
         print("RESULTS_JSON:")
         print(json.dumps(results, indent=2))
         print("END_RESULTS_JSON")
-        
     except Exception as e:
         print(f"Errore analisi: {e}", file=sys.stderr)
         sys.exit(1)
-
 
 if __name__ == '__main__':
     main()

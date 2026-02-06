@@ -503,7 +503,7 @@ body {
     position: relative;
     background: var(--bg-gradient);
     border-radius: var(--border-radius-lg);
-    max-width: 800px;
+    max-width: 900px;
     width: 90%;
     max-height: 90vh;
     overflow: hidden;
