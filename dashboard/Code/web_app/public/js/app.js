@@ -8,6 +8,8 @@ class BoxingAnalyzer {
         this.gaugeCharts = {};
         this.timelineChart = null;
         this.punchDetailChart = null;
+        this.timelinePointIndexMap = new Map();
+        this.trainingStats = {};
         
         this.init();
     }
@@ -41,6 +43,14 @@ class BoxingAnalyzer {
         this.sessionDuration = document.getElementById('sessionDuration');
         this.punchesPerMin = document.getElementById('punchesPerMin');
         this.newSessionBtn = document.getElementById('newSessionBtn');
+
+        // Training stats elements
+        this.statMeanVelocityValue = document.getElementById('statMeanVelocityValue');
+        this.statMeanVelocityType = document.getElementById('statMeanVelocityType');
+        this.statMeanAccelerationValue = document.getElementById('statMeanAccelerationValue');
+        this.statMeanAccelerationType = document.getElementById('statMeanAccelerationType');
+        this.statMinDurationValue = document.getElementById('statMinDurationValue');
+        this.statMinDurationType = document.getElementById('statMinDurationType');
         
         // Modals
         this.punchModal = document.getElementById('punchModal');
@@ -81,6 +91,24 @@ class BoxingAnalyzer {
             card.addEventListener('click', () => {
                 const punchType = card.dataset.punchType;
                 this.openPunchModal(punchType);
+            });
+        });
+
+        // Training stat hover highlight
+        document.querySelectorAll('.training-stat-card').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                const statKey = card.dataset.statKey;
+                const statInfo = this.trainingStats?.[statKey] || null;
+                this.highlightPunchOnTimeline(statInfo?.punch || null);
+            });
+            card.addEventListener('mouseleave', () => {
+                this.clearTimelineHighlight();
+            });
+            card.addEventListener('click', () => {
+                const statKey = card.dataset.statKey;
+                const statInfo = this.trainingStats?.[statKey] || null;
+                if (!statInfo?.punch) return;
+                this.openPunchDetail(statInfo.punch, statInfo.index);
             });
         });
     }
@@ -143,7 +171,7 @@ class BoxingAnalyzer {
             
         } catch (error) {
             console.error('Error:', error);
-            this.showError('Upload fallito. Riprova.');
+            this.showError('Upload failed. Please try again.');
         }
     }
     
@@ -158,8 +186,8 @@ class BoxingAnalyzer {
             } else if (data.status === 'completed') {
                 this.updateProgress(100);
                 
-                console.log('Risultati ricevuti:', data.results);
-                console.log('Punches prima normalizzazione:', data.results.punches?.map(p => p.type));
+                console.log('Results received:', data.results);
+                console.log('Punches before normalization:', data.results.punches?.map(p => p.type));
                 
                 this.analysisResults = data.results;
                 
@@ -180,16 +208,16 @@ class BoxingAnalyzer {
                     this.analysisResults.punchCounts = normalizedCounts;
                 }
                 
-                console.log('Punches dopo normalizzazione:', this.analysisResults.punches.map(p => p.type));
-                console.log('PunchCounts normalizzati:', this.analysisResults.punchCounts);
+                console.log('Punches after normalization:', this.analysisResults.punches.map(p => p.type));
+                console.log('PunchCounts normalized:', this.analysisResults.punchCounts);
                 
                 setTimeout(() => this.showResults(), 500);
             } else if (data.status === 'error') {
                 this.showError(data.error);
             }
         } catch (error) {
-            console.error('Errore polling:', error);
-            this.showError('Errore durante l\'analisi');
+            console.error('Polling error:', error);
+            this.showError('Error during analysis');
         }
     }
     
@@ -198,13 +226,13 @@ class BoxingAnalyzer {
         this.progressText.textContent = `${progress}%`;
         
         if (progress < 30) {
-            this.processingInfo.textContent = 'Caricamento dati sensori...';
+            this.processingInfo.textContent = 'Loading sensor data...';
         } else if (progress < 60) {
-            this.processingInfo.textContent = 'Rilevamento colpi...';
+            this.processingInfo.textContent = 'Detecting punches...';
         } else if (progress < 90) {
-            this.processingInfo.textContent = 'Analisi metriche...';
+            this.processingInfo.textContent = 'Analyzing metrics...';
         } else {
-            this.processingInfo.textContent = 'Finalizzazione risultati...';
+            this.processingInfo.textContent = 'Finalizing results...';
         }
     }
     
@@ -221,6 +249,9 @@ class BoxingAnalyzer {
         
         // Create gauge charts
         this.createGaugeCharts();
+
+        // Update training stats
+        this.updateTrainingStats();
         
         // Create timeline
         this.createTimeline();
@@ -254,6 +285,130 @@ class BoxingAnalyzer {
         
         return normalized;
     }
+
+    getPunchTypeLabel(punchType) {
+        const typeMap = {
+            'jab_left': 'Jab (Left)',
+            'jab_right': 'Jab (Right)',
+            'hook_left': 'Hook (Left)',
+            'hook_right': 'Hook (Right)',
+            'uppercut_left': 'Uppercut (Left)',
+            'uppercut_right': 'Uppercut (Right)'
+        };
+
+        return typeMap[punchType] || punchType;
+    }
+
+    findBestPunch(punches, valueSelector, compare) {
+        let bestPunch = null;
+        let bestValue = null;
+
+        punches.forEach(punch => {
+            const value = valueSelector(punch);
+            if (!Number.isFinite(value)) return;
+
+            if (bestPunch === null || compare(value, bestValue)) {
+                bestPunch = punch;
+                bestValue = value;
+            }
+        });
+
+        return bestPunch;
+    }
+
+    setTrainingStat(valueElement, typeElement, valueText, typeText) {
+        if (valueElement) valueElement.textContent = valueText;
+        if (typeElement) typeElement.textContent = typeText;
+    }
+
+    updateTrainingStats() {
+        const punches = this.analysisResults?.punches || [];
+
+        if (punches.length === 0) {
+            this.trainingStats = {};
+            this.setTrainingStat(this.statMeanVelocityValue, this.statMeanVelocityType, '-', 'No punches');
+            this.setTrainingStat(this.statMeanAccelerationValue, this.statMeanAccelerationType, '-', 'No punches');
+            this.setTrainingStat(this.statMinDurationValue, this.statMinDurationType, '-', 'No punches');
+            return;
+        }
+
+        const bestMeanVelocity = this.findBestPunch(
+            punches,
+            punch => punch.meanVelocity,
+            (current, best) => current > best
+        );
+        const bestMeanAcceleration = this.findBestPunch(
+            punches,
+            punch => punch.meanAcceleration,
+            (current, best) => current > best
+        );
+        const bestDuration = this.findBestPunch(
+            punches,
+            punch => punch.duration,
+            (current, best) => current < best
+        );
+
+        const meanVelocityIndex = bestMeanVelocity ? punches.indexOf(bestMeanVelocity) + 1 : null;
+        const meanAccelerationIndex = bestMeanAcceleration ? punches.indexOf(bestMeanAcceleration) + 1 : null;
+        const minDurationIndex = bestDuration ? punches.indexOf(bestDuration) + 1 : null;
+
+        this.trainingStats = {
+            meanVelocity: bestMeanVelocity ? { punch: bestMeanVelocity, index: meanVelocityIndex } : null,
+            meanAcceleration: bestMeanAcceleration ? { punch: bestMeanAcceleration, index: meanAccelerationIndex } : null,
+            minDuration: bestDuration ? { punch: bestDuration, index: minDurationIndex } : null
+        };
+
+        if (bestMeanVelocity) {
+            this.setTrainingStat(
+                this.statMeanVelocityValue,
+                this.statMeanVelocityType,
+                `${bestMeanVelocity.meanVelocity.toFixed(2)} m/s`,
+                this.getPunchTypeLabel(bestMeanVelocity.type)
+            );
+        } else {
+            this.setTrainingStat(this.statMeanVelocityValue, this.statMeanVelocityType, '-', 'Data not available');
+        }
+
+        if (bestMeanAcceleration) {
+            this.setTrainingStat(
+                this.statMeanAccelerationValue,
+                this.statMeanAccelerationType,
+                `${bestMeanAcceleration.meanAcceleration.toFixed(2)} m/s²`,
+                this.getPunchTypeLabel(bestMeanAcceleration.type)
+            );
+        } else {
+            this.setTrainingStat(this.statMeanAccelerationValue, this.statMeanAccelerationType, '-', 'Data not available');
+        }
+
+        if (bestDuration) {
+            this.setTrainingStat(
+                this.statMinDurationValue,
+                this.statMinDurationType,
+                `${bestDuration.duration.toFixed(0)} ms`,
+                this.getPunchTypeLabel(bestDuration.type)
+            );
+        } else {
+            this.setTrainingStat(this.statMinDurationValue, this.statMinDurationType, '-', 'Data not available');
+        }
+    }
+
+    highlightPunchOnTimeline(punch) {
+        if (!punch || !this.timelineChart || !this.timelinePointIndexMap?.size) return;
+
+        const location = this.timelinePointIndexMap.get(punch);
+        if (!location) return;
+
+        this.timelineChart.setActiveElements([
+            { datasetIndex: location.datasetIndex, index: location.index }
+        ]);
+        this.timelineChart.update('none');
+    }
+
+    clearTimelineHighlight() {
+        if (!this.timelineChart) return;
+        this.timelineChart.setActiveElements([]);
+        this.timelineChart.update('none');
+    }
     
     createGaugeCharts() {
         const punchTypes = [
@@ -266,7 +421,7 @@ class BoxingAnalyzer {
         ];
         
         // Debug: stampa i dati ricevuti
-        console.log('📊 Dati ricevuti dal backend:');
+        console.log('📊 Data received from backend:');
         console.log('Total punches:', this.analysisResults.totalPunches);
         console.log('Punch counts:', this.analysisResults.punchCounts);
         console.log('Number of punch events:', this.analysisResults.punches?.length);
@@ -280,7 +435,7 @@ class BoxingAnalyzer {
                 ? (count / this.analysisResults.totalPunches) * 100 
                 : 0;
             
-            console.log(`${punch.id}: ${count} colpi (${percentage.toFixed(1)}%)`);
+            console.log(`${punch.id}: ${count} punches (${percentage.toFixed(1)}%)`);
             
             // Update count display
             document.getElementById(punch.countId).textContent = count;
@@ -338,9 +493,11 @@ class BoxingAnalyzer {
     createTimeline() {
         const container = document.getElementById('timelineChart');
         container.innerHTML = '';
+
+        this.timelinePointIndexMap = new Map();
         
         if (!this.analysisResults.punches || this.analysisResults.punches.length === 0) {
-            container.innerHTML = '<p style="text-align: center; padding: 2rem; color: #666;">Nessun colpo rilevato</p>';
+            container.innerHTML = '<p style="text-align: center; padding: 2rem; color: #666;">No punches detected</p>';
             return;
         }
         
@@ -355,7 +512,7 @@ class BoxingAnalyzer {
         const punches = this.analysisResults.punches;
         const duration = this.analysisResults.duration;
         
-        console.log('Timeline - Tutti i punch:', punches.map(p => ({ type: p.type, timestamp: p.timestamp })));
+        console.log('Timeline - All punches:', punches.map(p => ({ type: p.type, timestamp: p.timestamp })));
         
         // Group punches by type
         const punchColors = {
@@ -367,9 +524,12 @@ class BoxingAnalyzer {
             'uppercut_right': '#9d4edd'
         };
         
-        const datasets = Object.keys(punchColors).map(type => {
+        const datasets = Object.keys(punchColors).map((type, datasetIndex) => {
             const matchingPunches = punches.filter(p => p.type === type);
-            console.log(`Timeline - Tipo "${type}": ${matchingPunches.length} colpi trovati`);
+            console.log(`Timeline - Type "${type}": ${matchingPunches.length} punches found`);
+            matchingPunches.forEach((punch, index) => {
+                this.timelinePointIndexMap.set(punch, { datasetIndex, index });
+            });
             return {
                 label: type.replace('_', ' ').toUpperCase(),
                 data: matchingPunches.map(p => ({ x: p.timestamp, y: 1 })),
@@ -394,7 +554,7 @@ class BoxingAnalyzer {
                         type: 'linear',
                         title: {
                             display: true,
-                            text: 'Tempo (secondi)',
+                            text: 'Time (seconds)',
                             color: '#a0a0a0'
                         },
                         min: 0,
@@ -420,17 +580,8 @@ class BoxingAnalyzer {
     
     openPunchModal(punchType) {
         if (!this.analysisResults) return;
-        
-        const typeMap = {
-            'jab_left': 'Diretto (Sinistro)',
-            'jab_right': 'Diretto (Destro)',
-            'hook_left': 'Gancio (Sinistro)',
-            'hook_right': 'Gancio (Destro)',
-            'uppercut_left': 'Montante (Sinistro)',
-            'uppercut_right': 'Montante (Destro)'
-        };
-        
-        this.modalTitle.textContent = typeMap[punchType] || punchType;
+
+        this.modalTitle.textContent = this.getPunchTypeLabel(punchType);
         
         // Filter punches by type
         const punches = this.analysisResults.punches.filter(p => p.type === punchType);
@@ -461,7 +612,7 @@ class BoxingAnalyzer {
     }
     
     openPunchDetail(punch, index) {
-        document.getElementById('detailModalTitle').textContent = `Colpo #${index} - ${punch.type}`;
+        document.getElementById('detailModalTitle').textContent = `Punch #${index} - ${punch.type}`;
         document.getElementById('detailTimestamp').textContent = this.formatTime(punch.timestamp);
         document.getElementById('detailConfidence').textContent = `${(punch.confidence * 100).toFixed(1)}%`;
         document.getElementById('detailVelocity').textContent = `${punch.peakVelocity.toFixed(2)} m/s`;
@@ -528,7 +679,7 @@ class BoxingAnalyzer {
                         ticks: { color: '#a0a0a0' }
                     },
                     y: {
-                        title: { display: true, text: 'Accelerazione (g)', color: '#a0a0a0' },
+                        title: { display: true, text: 'Acceleration (g)', color: '#a0a0a0' },
                         grid: { color: '#333355' },
                         ticks: { color: '#a0a0a0' }
                     }
@@ -573,7 +724,7 @@ class BoxingAnalyzer {
     }
     
     showError(message) {
-        alert('Errore: ' + message);
+        alert('Error: ' + message);
         this.resetSession();
     }
 }

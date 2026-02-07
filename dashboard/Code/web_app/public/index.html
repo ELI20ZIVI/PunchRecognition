@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,23 +24,23 @@
             <section id="uploadSection" class="section upload-section">
                 <div class="upload-container">
                     <div class="upload-icon">📊</div>
-                    <h2>Carica Sessione di Allenamento</h2>
-                    <p>Carica il file CSV con i dati dei sensori per analizzare la tua sessione</p>
+                    <h2>Upload Training Session</h2>
+                    <p>Upload the CSV file with sensor data to analyze your session</p>
                     
                     <div class="upload-area" id="uploadArea">
                         <input type="file" id="csvInput" accept=".csv" hidden>
                         <div class="upload-content">
                             <span class="upload-icon-large">📁</span>
-                            <p>Trascina qui il file CSV</p>
-                            <p class="or-text">oppure</p>
-                            <button class="btn btn-primary" id="selectFileBtn">Seleziona File</button>
+                            <p>Drag the CSV file here</p>
+                            <p class="or-text">or</p>
+                            <button class="btn btn-primary" id="selectFileBtn">Select File</button>
                         </div>
                     </div>
                     
                     <div class="file-info" id="fileInfo" style="display: none;">
                         <span class="file-icon">📄</span>
                         <span class="file-name" id="fileName"></span>
-                        <button class="btn btn-secondary" id="analyzeBtn">Analizza Sessione</button>
+                        <button class="btn btn-secondary" id="analyzeBtn">Analyze Session</button>
                     </div>
                 </div>
             </section>
@@ -52,14 +52,14 @@
                         <div class="glove left-glove">🥊</div>
                         <div class="glove right-glove">🥊</div>
                     </div>
-                    <h2>Analisi in corso...</h2>
+                    <h2>Analysis in progress...</h2>
                     <div class="progress-container">
                         <div class="progress-bar">
                             <div class="progress-fill" id="progressFill"></div>
                         </div>
                         <span class="progress-text" id="progressText">0%</span>
                     </div>
-                    <p class="processing-info" id="processingInfo">Elaborazione dati sensori...</p>
+                    <p class="processing-info" id="processingInfo">Processing sensor data...</p>
                 </div>
             </section>
 
@@ -71,51 +71,51 @@
                         <span class="stat-icon">👊</span>
                         <div class="stat-content">
                             <span class="stat-value" id="totalPunches">0</span>
-                            <span class="stat-label">Colpi Totali</span>
+                            <span class="stat-label">Total Punches</span>
                         </div>
                     </div>
                     <div class="stat-card session-duration">
                         <span class="stat-icon">⏱️</span>
                         <div class="stat-content">
                             <span class="stat-value" id="sessionDuration">0:00</span>
-                            <span class="stat-label">Durata</span>
+                            <span class="stat-label">Duration</span>
                         </div>
                     </div>
                     <div class="stat-card punches-per-min">
                         <span class="stat-icon">⚡</span>
                         <div class="stat-content">
                             <span class="stat-value" id="punchesPerMin">0</span>
-                            <span class="stat-label">Colpi/Min</span>
+                            <span class="stat-label">Punches/Min</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Gauge Charts -->
                 <div class="gauges-container">
-                    <h2 class="section-title">Distribuzione Colpi</h2>
+                    <h2 class="section-title">Punch Distribution</h2>
                     <div class="gauges-grid">
                         <!-- Left Hand Punches -->
                         <div class="hand-section">
-                            <h3 class="hand-title">🤛 Mano Sinistra</h3>
+                            <h3 class="hand-title">🤛 Left Hand</h3>
                             <div class="gauges-row">
                                 <div class="gauge-card" data-punch-type="jab_left">
                                     <canvas id="gaugeJabLeft" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Diretto</span>
+                                        <span class="gauge-label">Jab</span>
                                         <span class="gauge-count" id="countJabLeft">0</span>
                                     </div>
                                 </div>
                                 <div class="gauge-card" data-punch-type="hook_left">
                                     <canvas id="gaugeHookLeft" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Gancio</span>
+                                        <span class="gauge-label">Hook</span>
                                         <span class="gauge-count" id="countHookLeft">0</span>
                                     </div>
                                 </div>
                                 <div class="gauge-card" data-punch-type="uppercut_left">
                                     <canvas id="gaugeUppercutLeft" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Montante</span>
+                                        <span class="gauge-label">Uppercut</span>
                                         <span class="gauge-count" id="countUppercutLeft">0</span>
                                     </div>
                                 </div>
@@ -124,26 +124,26 @@
 
                         <!-- Right Hand Punches -->
                         <div class="hand-section">
-                            <h3 class="hand-title">🤜 Mano Destra</h3>
+                            <h3 class="hand-title">🤜 Right Hand</h3>
                             <div class="gauges-row">
                                 <div class="gauge-card" data-punch-type="jab_right">
                                     <canvas id="gaugeJabRight" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Diretto</span>
+                                        <span class="gauge-label">Jab</span>
                                         <span class="gauge-count" id="countJabRight">0</span>
                                     </div>
                                 </div>
                                 <div class="gauge-card" data-punch-type="hook_right">
                                     <canvas id="gaugeHookRight" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Gancio</span>
+                                        <span class="gauge-label">Hook</span>
                                         <span class="gauge-count" id="countHookRight">0</span>
                                     </div>
                                 </div>
                                 <div class="gauge-card" data-punch-type="uppercut_right">
                                     <canvas id="gaugeUppercutRight" class="gauge-canvas"></canvas>
                                     <div class="gauge-info">
-                                        <span class="gauge-label">Montante</span>
+                                        <span class="gauge-label">Uppercut</span>
                                         <span class="gauge-count" id="countUppercutRight">0</span>
                                     </div>
                                 </div>
@@ -152,16 +152,47 @@
                     </div>
                 </div>
 
+                <!-- Training Stats -->
+                <div class="training-stats-container">
+                    <h2 class="section-title">Training Stats</h2>
+                    <div class="training-stats-grid">
+                        <div class="training-stat-card" data-stat-key="meanVelocity">
+                            <span class="training-stat-icon">🚶</span>
+                            <div class="training-stat-content">
+                                <span class="training-stat-title">Highest average speed</span>
+                                <span class="training-stat-value" id="statMeanVelocityValue">-</span>
+                                <span class="training-stat-meta" id="statMeanVelocityType">-</span>
+                            </div>
+                        </div>
+                        <div class="training-stat-card" data-stat-key="meanAcceleration">
+                            <span class="training-stat-icon">🚀</span>
+                            <div class="training-stat-content">
+                                <span class="training-stat-title">Highest average acceleration</span>
+                                <span class="training-stat-value" id="statMeanAccelerationValue">-</span>
+                                <span class="training-stat-meta" id="statMeanAccelerationType">-</span>
+                            </div>
+                        </div>
+                        <div class="training-stat-card" data-stat-key="minDuration">
+                            <span class="training-stat-icon">⏱️</span>
+                            <div class="training-stat-content">
+                                <span class="training-stat-title">Shortest duration</span>
+                                <span class="training-stat-value" id="statMinDurationValue">-</span>
+                                <span class="training-stat-meta" id="statMinDurationType">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Timeline -->
                 <div class="timeline-container">
-                    <h2 class="section-title">Timeline Colpi</h2>
+                    <h2 class="section-title">Punch Timeline</h2>
                     <div class="timeline-chart" id="timelineChart"></div>
                 </div>
 
                 <!-- New Session Button -->
                 <div class="new-session-container">
                     <button class="btn btn-primary btn-large" id="newSessionBtn">
-                        🔄 Nuova Analisi
+                        🔄 New Analysis
                     </button>
                 </div>
             </section>
@@ -172,7 +203,7 @@
             <div class="modal-overlay" id="modalOverlay"></div>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2 id="modalTitle">Dettagli Colpi</h2>
+                    <h2 id="modalTitle">Punch Details</h2>
                     <button class="modal-close" id="modalClose">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -181,13 +212,13 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Tempo</th>
-                                    <th>Confidenza</th>
-                                    <th>Velocità Picco</th>
-                                    <th>Velocità Media</th>
-                                    <th>Accelerazione Picco</th>
-                                    <th>Accelerazione Media</th>
-                                    <th>Durata</th>
+                                    <th>Time</th>
+                                    <th>Confidence</th>
+                                    <th>Peak Speed</th>
+                                    <th>Average Speed</th>
+                                    <th>Peak Acceleration</th>
+                                    <th>Average Acceleration</th>
+                                    <th>Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="punchTableBody">
@@ -203,7 +234,7 @@
             <div class="modal-overlay" id="detailModalOverlay"></div>
             <div class="modal-content modal-large">
                 <div class="modal-header">
-                    <h2 id="detailModalTitle">Analisi Colpo</h2>
+                    <h2 id="detailModalTitle">Punch Analysis</h2>
                     <button class="modal-close" id="detailModalClose">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -215,37 +246,37 @@
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">🎯</span>
-                            <span class="detail-label">Confidenza</span>
+                            <span class="detail-label">Confidence</span>
                             <span class="detail-value" id="detailConfidence">-</span>
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">🏎️💨</span>
-                            <span class="detail-label">Velocità Picco</span>
+                            <span class="detail-label">Peak Speed</span>
                             <span class="detail-value" id="detailVelocity">-</span>
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">🚶</span>
-                            <span class="detail-label">Velocità Media</span>
+                            <span class="detail-label">Average Speed</span>
                             <span class="detail-value" id="detailMeanVelocity">-</span>
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">⏳</span>
-                            <span class="detail-label">Durata</span>
+                            <span class="detail-label">Duration</span>
                             <span class="detail-value" id="detailDuration">-</span>
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">🚀</span>
-                            <span class="detail-label">Accelerazione Picco</span>
+                            <span class="detail-label">Peak Acceleration</span>
                             <span class="detail-value" id="detailAcceleration">-</span>
                         </div>
                         <div class="detail-card">
                             <span class="detail-icon">📈</span>
-                            <span class="detail-label">Accelerazione Media</span>
+                            <span class="detail-label">Average Acceleration</span>
                             <span class="detail-value" id="detailMeanAcceleration">-</span>
                         </div>
                     </div>
                     <div class="punch-chart-container">
-                        <h3>Dati Sensori Durante il Colpo</h3>
+                        <h3>Sensor Data During the Punch</h3>
                         <canvas id="punchDataChart"></canvas>
                     </div>
                 </div>

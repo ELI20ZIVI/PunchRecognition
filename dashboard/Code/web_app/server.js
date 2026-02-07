@@ -8,6 +8,27 @@ const fs = require('fs');
 const app = express();
 const PORT = 3000;
 
+const uploadDir = path.join(__dirname, 'uploads');
+
+const clearUploadsDir = () => {
+    try {
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+            return;
+        }
+
+        fs.readdirSync(uploadDir).forEach((entry) => {
+            const entryPath = path.join(uploadDir, entry);
+            const stat = fs.statSync(entryPath);
+            if (stat.isFile()) {
+                fs.unlinkSync(entryPath);
+            }
+        });
+    } catch (error) {
+        console.error('Failed to clear uploads directory:', error);
+    }
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -16,7 +37,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configurazione multer per upload file
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, 'uploads');
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -155,6 +175,7 @@ app.post('/api/reset', (req, res) => {
 
 // Avvio del server
 app.listen(PORT, () => {
+    clearUploadsDir();
     console.log(`
     ╔════════════════════════════════════════════════════════════╗
     ║                                                            ║
