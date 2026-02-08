@@ -648,21 +648,21 @@ class BoxingAnalyzer {
                 datasets: [
                     {
                         label: 'Acc X',
-                        data: sensorData.map(d => d[0] || 0),
+                        data: sensorData.map(d => d[0]/100 || 0),       // Normalize the acceleration (e.g. from cm/s² to m/s²)
                         borderColor: '#e63946',
                         tension: 0.4,
                         pointRadius: 0
                     },
                     {
                         label: 'Acc Y',
-                        data: sensorData.map(d => d[1] || 0),
+                        data: sensorData.map(d => d[1]/100 || 0),       // Normalize the acceleration (e.g. from cm/s² to m/s²)
                         borderColor: '#4cc9f0',
                         tension: 0.4,
                         pointRadius: 0
                     },
                     {
                         label: 'Acc Z',
-                        data: sensorData.map(d => d[2] || 0),
+                        data: sensorData.map(d => d[2]/100 || 0),       // Normalize the acceleration (e.g. from cm/s² to m/s²)
                         borderColor: '#f4a261',
                         tension: 0.4,
                         pointRadius: 0
@@ -671,7 +671,7 @@ class BoxingAnalyzer {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 scales: {
                     x: {
                         title: { display: true, text: 'Frame', color: '#a0a0a0' },
@@ -679,7 +679,7 @@ class BoxingAnalyzer {
                         ticks: { color: '#a0a0a0' }
                     },
                     y: {
-                        title: { display: true, text: 'Acceleration (g)', color: '#a0a0a0' },
+                        title: { display: true, text: 'Acceleration (m/s²)', color: '#a0a0a0' },
                         grid: { color: '#333355' },
                         ticks: { color: '#a0a0a0' }
                     }

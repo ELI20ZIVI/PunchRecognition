@@ -253,7 +253,7 @@ class WebPunchAnalyzer:
                 'meanAcceleration': metrics['mean_acceleration'],
                 'meanVelocity': metrics['mean_velocity'],
                 'duration': metrics['duration'],
-                'sensorData': full_punch_data[-30:].tolist() if len(full_punch_data) > 30 else full_punch_data.tolist()
+                'sensorData': full_punch_data.tolist()
             }
             
             self.detected_punches.append(punch_record)
