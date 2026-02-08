@@ -89,9 +89,7 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
     const pythonScript = path.join(__dirname, 'python', 'analizer.py');
 
     // Avvia lo script Python per l'analisi
-    // Usa il Python del venv in dashboard/Code/web_app/python/sportTech
-    const venvPython = path.join(__dirname, 'python', 'sportTech', 'bin', 'python');
-    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
+    const pythonCmd = 'python3';
 
     console.log(`Using Python interpreter: ${pythonCmd}`);
 
